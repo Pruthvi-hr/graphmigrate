@@ -1,0 +1,2 @@
+name: "graphmigrate-dashboard"
+entrypoint: "streamlit run databricks-app.py"
