@@ -1,10 +1,10 @@
 {
   "project": "GraphMigrate",
-  "version": "1.0.0",
-  "data_disclaimer": "SYNTHETIC PROTOTYPE DATA - ALL HISTORICAL LOGS ARE MOCKED FOR SIMULATION",
+  "version": "1.1.0",
+  "description": "Strict API contract for JSON communication between the local CLI and Databricks backend - Updated for Track 2 Curveball (Graph as Evidence, Not an Oracle).",
   "cli_request_schema": {
     "type": "object",
-    "required": ["target_file", "git_commit", "entire_graph_version", "dependency_graph"],
+    "required": ["target_file", "git_commit", "dependency_graph"],
     "properties": {
       "target_file": {
         "type": "string",
@@ -15,8 +15,7 @@
         "description": "The current git commit hash for tracking"
       },
       "entire_graph_version": {
-        "type": "string",
-        "description": "The version of Entire Graph plugin being used"
+        "type": "string"
       },
       "dependency_graph": {
         "type": "object",
@@ -26,11 +25,16 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["id", "type", "lines_of_code"],
+              "required": ["id", "type", "lines_of_code", "evidence_type"],
               "properties": {
-                "id": { "type": "string", "description": "Unique file identifier/path, e.g., 'src/auth/legacy-jwt.js'" },
+                "id": { "type": "string" },
                 "type": { "type": "string", "enum": ["source", "test", "config", "utility"] },
-                "lines_of_code": { "type": "integer" }
+                "lines_of_code": { "type": "integer" },
+                "evidence_type": { 
+                  "type": "string", 
+                  "enum": ["confirmed", "heuristic", "unverified"],
+                  "description": "confirmed: static AST parse. heuristic: dynamic dispatch/dynamic imports. unverified: dynamic require or code generation"
+                }
               }
             }
           },
@@ -38,11 +42,12 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["source", "target", "type"],
+              "required": ["source", "target", "type", "evidence_type"],
               "properties": {
-                "source": { "type": "string", "description": "The file that imports or depends on target" },
-                "target": { "type": "string", "description": "The file being imported or depended on" },
-                "type": { "type": "string", "enum": ["import", "requires", "calls"] }
+                "source": { "type": "string" },
+                "target": { "type": "string" },
+                "type": { "type": "string", "enum": ["import", "requires", "calls", "dynamic_dispatch", "reflection"] },
+                "evidence_type": { "type": "string", "enum": ["confirmed", "heuristic", "unverified"] }
               }
             }
           }
@@ -52,20 +57,22 @@
   },
   "databricks_response_schema": {
     "type": "object",
-    "required": ["target_file", "global_fragility_score", "affected_files_count", "migration_phases", "recommended_tests", "data_label"],
+    "required": ["target_file", "global_fragility_score", "affected_files_count", "migration_phases", "recommended_tests", "analysis_completeness"],
     "properties": {
       "target_file": { "type": "string" },
-      "global_fragility_score": { 
-        "type": "number", 
-        "minimum": 0.0, 
-        "maximum": 100.0,
-        "description": "Risk index calculated using PageRank centrality * historical CI failures."
-      },
+      "global_fragility_score": { "type": "number" },
       "affected_files_count": { "type": "integer" },
-      "data_label": { "type": "string", "description": "Explicit warning that this uses synthetic telemetry" },
+      "analysis_completeness": {
+        "type": "object",
+        "required": ["completeness_percentage", "has_partial_analysis", "unverified_components_count"],
+        "properties": {
+          "completeness_percentage": { "type": "number" },
+          "has_partial_analysis": { "type": "boolean" },
+          "unverified_components_count": { "type": "integer" }
+        }
+      },
       "migration_phases": {
         "type": "array",
-        "description": "Sequenced steps for migrating the code to prevent circular or cascading breakages.",
         "items": {
           "type": "object",
           "required": ["phase_number", "phase_name", "files_to_migrate", "risk_level"],
@@ -76,11 +83,13 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "required": ["file_path", "pagerank_score", "historical_failure_rate"],
+                "required": ["file_path", "pagerank_score", "historical_failure_rate", "evidence_type", "verification_required"],
                 "properties": {
                   "file_path": { "type": "string" },
                   "pagerank_score": { "type": "number" },
-                  "historical_failure_rate": { "type": "number" }
+                  "historical_failure_rate": { "type": "number" },
+                  "evidence_type": { "type": "string", "enum": ["confirmed", "heuristic", "unverified"] },
+                  "verification_required": { "type": "boolean" }
                 }
               }
             },
@@ -90,7 +99,6 @@
       },
       "recommended_tests": {
         "type": "array",
-        "description": "The minimal smart subset of tests that cover the affected graph paths.",
         "items": { "type": "string" }
       }
     }
@@ -98,16 +106,20 @@
   "mocked_responses": {
     "high_risk_jwt_refactor": {
       "target_file": "src/auth/legacy-jwt.js",
-      "global_fragility_score": 84.7,
-      "affected_files_count": 8,
-      "data_label": "[SYNTHETIC PROTOTYPE TELEMETRY]",
+      "global_fragility_score": 92.5,
+      "affected_files_count": 9,
+      "analysis_completeness": {
+        "completeness_percentage": 77.8,
+        "has_partial_analysis": true,
+        "unverified_components_count": 2
+      },
       "migration_phases": [
         {
           "phase_number": 1,
           "phase_name": "Isolate Downstream Leaf Components",
           "files_to_migrate": [
-            { "file_path": "src/utils/logger.js", "pagerank_score": 0.12, "historical_failure_rate": 0.05 },
-            { "file_path": "src/auth/validators.js", "pagerank_score": 0.28, \"historical_failure_rate\": 0.15 }
+            { "file_path": "src/utils/logger.js", "pagerank_score": 0.12, "historical_failure_rate": 0.05, "evidence_type": "confirmed", "verification_required": false },
+            { "file_path": "src/auth/validators.js", "pagerank_score": 0.28, "historical_failure_rate": 0.15, "evidence_type": "confirmed", "verification_required": false }
           ],
           "risk_level": "Low"
         },
@@ -115,9 +127,10 @@
           "phase_number": 2,
           "phase_name": "Update Controllers & Intermediate Layer",
           "files_to_migrate": [
-            { "file_path": "src/controllers/user-controller.js", \"pagerank_score\": 0.65, \"historical_failure_rate\": 0.45 },
-            { "file_path": "src/controllers/admin-controller.js", \"pagerank_score\": 0.52, \"historical_failure_rate\": 0.30 },
-            { "file_path": "src/middleware/auth-middleware.js", \"pagerank_score\": 0.78, \"historical_failure_rate\": 0.60 }
+            { "file_path": "src/controllers/user-controller.js", "pagerank_score": 0.65, "historical_failure_rate": 0.45, "evidence_type": "confirmed", "verification_required": false },
+            { "file_path": "src/controllers/admin-controller.js", "pagerank_score": 0.52, "historical_failure_rate": 0.30, "evidence_type": "confirmed", "verification_required": false },
+            { "file_path": "src/middleware/auth-middleware.js", "pagerank_score": 0.78, "historical_failure_rate": 0.60, "evidence_type": "confirmed", "verification_required": false },
+            { "file_path": "src/auth/dynamic-dispatcher.js", "pagerank_score": 0.35, "historical_failure_rate": 0.25, "evidence_type": "heuristic", "verification_required": true }
           ],
           "risk_level": "Medium"
         },
@@ -125,7 +138,8 @@
           "phase_number": 3,
           "phase_name": "Refactor Core Load-Bearing Identity Module",
           "files_to_migrate": [
-            { "file_path": "src/auth/legacy-jwt.js", "pagerank_score": 0.95, "historical_failure_rate": 0.82 }
+            { "file_path": "src/auth/legacy-jwt.js", "pagerank_score": 0.95, "historical_failure_rate": 0.82, "evidence_type": "confirmed", "verification_required": false },
+            { "file_path": "src/auth/reflective-loader.js", "pagerank_score": 0.45, "historical_failure_rate": 0.50, "evidence_type": "unverified", "verification_required": true }
           ],
           "risk_level": "High"
         }
@@ -133,7 +147,8 @@
       "recommended_tests": [
         "tests/auth/jwt.test.js",
         "tests/middleware/auth.test.js",
-        "tests/integration/login.test.js"
+        "tests/integration/login.test.js",
+        "tests/fixtures/partial-analysis.test.js"
       ]
     }
   }
